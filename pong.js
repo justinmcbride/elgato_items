@@ -7,8 +7,8 @@ const Utilities = require('./utilities');
 
 const myStreamDeck = new StreamDeck();
 
-const ICON_WIDTH = StreamDeck.ICON_SIZE;
-const ICON_HEIGHT = StreamDeck.ICON_SIZE;
+const ICON_WIDTH = StreamDeck.ICON_SIZE; // 72
+const ICON_HEIGHT = StreamDeck.ICON_SIZE; // 72
 
 class Ball
 {
@@ -18,22 +18,31 @@ class Ball
     this.x = 0;
     this.y = 0;
 
-    this.speedX = 4;
-    this.speedY = 11;
+    this.speedX = 11;
+    this.speedY = 3;
+    this.isCollided = false;
+    this.isPerfectCollision = false;
   }
 
   move( boundX, boundY )
   {
+    this.isCollided = false;
+    this.isPerfectCollision = false;
+
     this.x += this.speedX;
     if( this.x >= boundX )
     {
       this.x = boundX;
       this.speedX = -(this.speedX);
+
+      this.isCollided = true;
     }
     else if( this.x <= 0 )
     {
       this.x = 0;
       this.speedX = -(this.speedX);
+
+      this.isCollided = true;
     }
 
 
@@ -42,11 +51,17 @@ class Ball
     {
       this.y = boundY;
       this.speedY = -(this.speedY);
+
+      if( this.isCollided ) this.isPerfectCollision = true;
+      this.isCollided = true;
     }
     else if( this.y <= 0 )
     {
       this.y = 0;
       this.speedY = -(this.speedY);
+
+      if( this.isCollided ) this.isPerfectCollision = true;
+      this.isCollided = true;
     }
   }
 
@@ -71,7 +86,10 @@ class Screen
 
   draw()
   {
-    this.drawingContext.fillStyle = `#000000`;
+    if( this.ball.isPerfectCollision ) this.drawingContext.fillStyle = `#00ff00`;
+    else if( this.ball.isCollided )    this.drawingContext.fillStyle = `#ff00ff`;
+    else                               this.drawingContext.fillStyle = `#000000`;
+
     this.drawingContext.fillRect( 0, 0, this.width, this.height );
 
     this.ball.move( this.width, this.height );
