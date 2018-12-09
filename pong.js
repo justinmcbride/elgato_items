@@ -1,6 +1,7 @@
 const Canvas = require('canvas');
 const StreamDeck = require('elgato-stream-deck');
 const gameloop = require('node-gameloop');
+const sharp = require('sharp');
 
 const Key = require('./key');
 const Utilities = require('./utilities');
@@ -12,142 +13,184 @@ const ICON_HEIGHT = StreamDeck.ICON_SIZE; // 72
 
 class Ball
 {
-  constructor()
+  constructor( position = { x: 0, y: 0}, w = 10, h = 10 )
   {
-    this.size = 10;
-    this.x = 0;
-    this.y = 0;
+    this.position = position;
 
-    this.speedX = 11;
-    this.speedY = 3;
-    this.isCollided = false;
-    this.isPerfectCollision = false;
+    this.w = w;
+    this.h = h;
+
+    this.offsetWidth = this.w / 2;
+    this.offsetHeight = this.h / 2;
+
+    this.speedX = Utilities.randomInt( 10 );
+    this.speedY = Utilities.randomInt( 10 );
   }
 
-  move( boundX, boundY )
+  move()
   {
-    this.isCollided = false;
-    this.isPerfectCollision = false;
+    let newPosition = this.position;
+    newPosition.x += this.speedX;
+    newPosition.y += this.speedY;
 
-    this.x += this.speedX;
-    if( this.x >= boundX )
+    let isCollided = Screen.doesCollide( newPosition );
+    if( isCollided.vertical )
     {
-      this.x = boundX;
-      this.speedX = -(this.speedX);
-
-      this.isCollided = true;
+      this.speedY = -this.speedY;
+      console.log( `Vertical collision. New speedY=${this.speedY}` );
     }
-    else if( this.x <= 0 )
+    if( isCollided.horizontal )
     {
-      this.x = 0;
-      this.speedX = -(this.speedX);
-
-      this.isCollided = true;
+      this.speedX = -this.speedX;
+      console.log( `Horizontal collision. New speedX=${this.speedX}` );
     }
-
-
-    this.y += this.speedY;
-    if( this.y >= boundY )
-    {
-      this.y = boundY;
-      this.speedY = -(this.speedY);
-
-      if( this.isCollided ) this.isPerfectCollision = true;
-      this.isCollided = true;
-    }
-    else if( this.y <= 0 )
-    {
-      this.y = 0;
-      this.speedY = -(this.speedY);
-
-      if( this.isCollided ) this.isPerfectCollision = true;
-      this.isCollided = true;
-    }
+    
+    this.position = newPosition;
   }
 
   draw( context )
   {
     context.fillStyle = `#ffffff`;
-    context.fillRect( this.x - ( this.size / 2 ), this.y - ( this.size / 2 ), this.size, this.size );
+    context.fillRect(
+      this.position.x - this.offsetWidth,
+      this.position.y - this.offsetHeight, 
+      this.w,
+      this.h
+    );
   }
 }
 
 class Screen
 {
-  constructor()
+  constructor( streamDeck )
   {
-    this.width = ICON_WIDTH * 5;
-    this.height = ICON_HEIGHT * 3;
-    this.canvas = Canvas.createCanvas( this.width, this.height );
+    this.streamDeck = streamDeck;
+    this.canvas = Canvas.createCanvas( Screen.WIDTH, Screen.HEIGHT );
     this.drawingContext = this.canvas.getContext('2d');
 
-    this.ball = new Ball();
+    this.balls = [];
+    this.balls.push ( new Ball() );
   }
 
-  draw()
+  static doesCollide( position )
   {
-    if( this.ball.isPerfectCollision ) this.drawingContext.fillStyle = `#00ff00`;
-    else if( this.ball.isCollided )    this.drawingContext.fillStyle = `#ff00ff`;
-    else                               this.drawingContext.fillStyle = `#000000`;
+    let newPosition = position;
+    Screen.IS_COLLISION_VERTICAL = false;
+    Screen.IS_COLLISION_HORIZONTAL = false;
+    if( position.x >= Screen.WIDTH )
+    {
+      newPosition.x = Screen.WIDTH;
+      Screen.IS_COLLISION_HORIZONTAL = true;
+    }
+    else if( position.x <= 0 )
+    {
+      newPosition.x = 0;
+      Screen.IS_COLLISION_HORIZONTAL = true;
+    }
 
-    this.drawingContext.fillRect( 0, 0, this.width, this.height );
+    if( position.y >= Screen.HEIGHT )
+    {
+      newPosition.y = Screen.HEIGHT;
 
-    this.ball.move( this.width, this.height );
-    this.ball.draw( this.drawingContext );
+      Screen.IS_COLLISION_VERTICAL = true;
+    }
+    else if( position.y <= 0 )
+    {
+      newPosition.y = 0;
+
+      Screen.IS_COLLISION_VERTICAL = true;
+    }
+
+    position = newPosition;
+
+    return { vertical: Screen.IS_COLLISION_VERTICAL, horizontal: Screen.IS_COLLISION_HORIZONTAL };
+  }
+
+  async draw()
+  {
+    for( let ball of this.balls )
+    {
+      ball.move();
+    }
+
+    if( Screen.IS_COLLISION_HORIZONTAL && Screen.IS_COLLISION_VERTICAL )      this.drawingContext.fillStyle = `#00ff00`;
+    else if( Screen.IS_COLLISION_HORIZONTAL || Screen.IS_COLLISION_VERTICAL ) this.drawingContext.fillStyle = `#ff00ff`;
+    else                                                                      this.drawingContext.fillStyle = `#000000`;
+
+    this.drawingContext.fillRect( 0, 0, Screen.WIDTH, Screen.HEIGHT );
+
+    for( let ball of this.balls )
+    {
+      ball.draw( this.drawingContext );
+    }
+
+    console.time( `Draw screen` );
+    let buffer =
+      await sharp( this.canvas.toBuffer() )
+        .flatten() // Eliminate alpha channel, if any.
+        .raw()
+        .toBuffer()
+    ;
+    this.streamDeck.fillPanel( buffer, { raw: { width: Screen.WIDTH, height: Screen.HEIGHT, channels: 3 } } );
+    console.timeEnd( `Draw screen` );
   }
 }
 
-const screen = new Screen();
-const allKeys = new Array( 15 );
-// for( i = 0; i < allKeys.length; i++ )
-// {
-//   const newKey = new Key.Key( i, myStreamDeck );
-//   allKeys[i] = newKey;
-// }
+Screen.WIDTH = ICON_WIDTH * 5;
+Screen.HEIGHT = ICON_HEIGHT * 3;
+Screen.IS_COLLISION_ANY = false;
+Screen.IS_COLLISION_PERFECT = false;
 
-allKeys[0] = new Key.Key( 4, myStreamDeck );
-allKeys[1] = new Key.Key( 3, myStreamDeck );
-allKeys[2] = new Key.Key( 2, myStreamDeck );
-allKeys[3] = new Key.Key( 1, myStreamDeck );
-allKeys[4] = new Key.Key( 0, myStreamDeck );
+const screen = new Screen( myStreamDeck );
+const allKeys = [];
 
-allKeys[5] = new Key.Key( 9, myStreamDeck );
-allKeys[6] = new Key.Key( 8, myStreamDeck );
-allKeys[7] = new Key.Key( 7, myStreamDeck );
-allKeys[8] = new Key.Key( 6, myStreamDeck );
-allKeys[9] = new Key.Key( 5, myStreamDeck );
+myStreamDeck.on( 'down', keyIndex => {
+  allKeys[keyIndex].event_down();
+} );
 
-allKeys[10] = new Key.Key( 14, myStreamDeck );
-allKeys[11] = new Key.Key( 13, myStreamDeck );
-allKeys[12] = new Key.Key( 12, myStreamDeck );
-allKeys[13] = new Key.Key( 11, myStreamDeck );
-allKeys[14] = new Key.Key( 10, myStreamDeck );
+myStreamDeck.on( 'up', keyIndex => {
+  allKeys[keyIndex].event_up();
+} );
 
-function doLoop( delta )
+allKeys.push( new Key.Key( 4, myStreamDeck ) );
+allKeys.push( new Key.Key( 3, myStreamDeck ) );
+allKeys.push( new Key.Key( 2, myStreamDeck ) );
+allKeys.push( new Key.Key( 1, myStreamDeck ) );
+allKeys.push( new Key.Key( 0, myStreamDeck ) );
+
+allKeys.push( new Key.Key( 9, myStreamDeck ) );
+allKeys.push( new Key.Key( 8, myStreamDeck ) );
+allKeys.push( new Key.Key( 7, myStreamDeck ) );
+allKeys.push( new Key.Key( 6, myStreamDeck ) );
+allKeys.push( new Key.Key( 5, myStreamDeck ) );
+
+allKeys.push( new Key.Key( 14, myStreamDeck ) );
+allKeys.push( new Key.Key( 13, myStreamDeck ) );
+allKeys.push( new Key.Key( 12, myStreamDeck ) );
+allKeys.push( new Key.Key( 11, myStreamDeck ) );
+allKeys.push( new Key.Key( 10, myStreamDeck ) );
+
+async function doLoop()
 {
-  screen.draw();
-  console.log( `Ball=[${screen.ball.x},${screen.ball.y}] delta=[${delta}]` );
-
-  for( i = 0; i < allKeys.length; i++ )
-  {
-    // TODO: can remember last icon the ball was on, and the new one and only render those two.
-    const topLeft = {
-      x: ICON_WIDTH * ( i % 5 ),
-      y: ICON_HEIGHT * Math.floor( i / 5 )
-    };
-
-    const bottomRight = {
-      x: ICON_WIDTH * ( i % 5 ) + ICON_WIDTH,
-      y: ICON_HEIGHT * Math.floor( i / 5 ) + ICON_HEIGHT
-    };
-
-    let newCanvas = Utilities.splitCanvas( screen.drawingContext, topLeft, bottomRight );
-    allKeys[i].drawCanvas( newCanvas );
-  }
+  await screen.draw();
 }
-gameloop.setGameLoop( (delta) => {
-  doLoop( delta );
-}, 1000 / 5);
+
+for( let key of allKeys )
+{
+  key.on( 'event_down', (clickedKey) => {
+    const keyNumber = clickedKey.keyNumber;
+    const newLocation = {
+      x: ( ICON_WIDTH * ( keyNumber % 5 ) ) + ( ICON_WIDTH / 2 ),
+      y: ( ICON_HEIGHT * Math.floor( keyNumber / 5 ) ) + ( ICON_HEIGHT / 2 ),
+    };
+    const newBall = new Ball( newLocation );
+    screen.balls.push( newBall );
+  } )
+}
+gameloop.setGameLoop( async(delta) => {
+  console.log( `delta=[${delta}]` );
+  await doLoop();
+}, 1000 / 5 );
 
 // myStreamDeck.on( 'down', keyIndex => {
 //   doLoop( 0 );

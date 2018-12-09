@@ -34,7 +34,7 @@ class Key extends EventEmitter
   event_down()
   {
     console.log( `DOWN [${this.keyNumber}]` );
-    this.draw();
+    // this.draw();
     this.emit( 'event_down', this );
   }
 
@@ -69,6 +69,7 @@ class Key extends EventEmitter
         .raw()
         .toBuffer()
     ;
+
     this.streamDeck.fillImage( this.keyNumber, buffer );
   }
 }

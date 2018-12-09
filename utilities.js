@@ -17,4 +17,10 @@ function splitCanvas( contextOriginal, point1, point2 )
   return newCanvas;
 }
 
+function randomInt( upperLimit, lowerLimit = 1 )
+{
+  return Math.floor( Math.random() * upperLimit ) + lowerLimit;
+}
+
 exports.splitCanvas = splitCanvas;
+exports.randomInt = randomInt;
