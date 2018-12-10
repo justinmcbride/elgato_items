@@ -25,26 +25,28 @@ class Ball
 
     this.speedX = Utilities.randomInt( 10 );
     this.speedY = Utilities.randomInt( 10 );
+
+    this.collisions = { vertical: false, horizontal: false };
   }
 
   move()
   {
+    this.collisions.horizontal = false;
+    this.collisions.vertical = false;
     let newPosition = this.position;
     newPosition.x += this.speedX;
     newPosition.y += this.speedY;
 
-    let isCollided = Screen.doesCollide( newPosition );
-    if( isCollided.vertical )
+    this.collisions = Screen.doesCollide( newPosition );
+    if( this.collisions.vertical )
     {
       this.speedY = -this.speedY;
-      console.log( `Vertical collision. New speedY=${this.speedY}` );
     }
-    if( isCollided.horizontal )
+    if( this.collisions.horizontal )
     {
       this.speedX = -this.speedX;
-      console.log( `Horizontal collision. New speedX=${this.speedX}` );
     }
-    
+
     this.position = newPosition;
   }
 
@@ -74,48 +76,56 @@ class Screen
 
   static doesCollide( position )
   {
+    let collisionHorizontal = false;
+    let collisionVeritcal = false;
     let newPosition = position;
-    Screen.IS_COLLISION_VERTICAL = false;
-    Screen.IS_COLLISION_HORIZONTAL = false;
     if( position.x >= Screen.WIDTH )
     {
       newPosition.x = Screen.WIDTH;
-      Screen.IS_COLLISION_HORIZONTAL = true;
+      collisionHorizontal = true;
     }
     else if( position.x <= 0 )
     {
       newPosition.x = 0;
-      Screen.IS_COLLISION_HORIZONTAL = true;
+      collisionHorizontal = true;
     }
 
     if( position.y >= Screen.HEIGHT )
     {
       newPosition.y = Screen.HEIGHT;
 
-      Screen.IS_COLLISION_VERTICAL = true;
+      collisionVeritcal = true;
     }
     else if( position.y <= 0 )
     {
       newPosition.y = 0;
 
-      Screen.IS_COLLISION_VERTICAL = true;
+      collisionVeritcal = true;
     }
 
     position = newPosition;
 
-    return { vertical: Screen.IS_COLLISION_VERTICAL, horizontal: Screen.IS_COLLISION_HORIZONTAL };
+    return { horizontal: collisionHorizontal, vertical: collisionVeritcal };
   }
 
   async draw()
   {
+    console.time( `Move balls` );
+    let anyCollision = false;
+    let anyCollisionPerfect = false;
+  
     for( let ball of this.balls )
     {
       ball.move();
+      if( ball.collisions.horizontal || ball.collisions.vertical ) anyCollision = true;
+      if( ball.collisions.horizontal && ball.collisions.vertical ) anyCollisionPerfect = true;
     }
 
-    if( Screen.IS_COLLISION_HORIZONTAL && Screen.IS_COLLISION_VERTICAL )      this.drawingContext.fillStyle = `#00ff00`;
-    else if( Screen.IS_COLLISION_HORIZONTAL || Screen.IS_COLLISION_VERTICAL ) this.drawingContext.fillStyle = `#ff00ff`;
-    else                                                                      this.drawingContext.fillStyle = `#000000`;
+    console.timeEnd( `Move balls` );
+
+    if( anyCollisionPerfect ) this.drawingContext.fillStyle = `#00ff00`;
+    else if( anyCollision )   this.drawingContext.fillStyle = `#ff00ff`;
+    else                      this.drawingContext.fillStyle = `#000000`;
 
     this.drawingContext.fillRect( 0, 0, Screen.WIDTH, Screen.HEIGHT );
 
@@ -138,8 +148,6 @@ class Screen
 
 Screen.WIDTH = ICON_WIDTH * 5;
 Screen.HEIGHT = ICON_HEIGHT * 3;
-Screen.IS_COLLISION_ANY = false;
-Screen.IS_COLLISION_PERFECT = false;
 
 const screen = new Screen( myStreamDeck );
 const allKeys = [];
@@ -190,7 +198,7 @@ for( let key of allKeys )
 gameloop.setGameLoop( async(delta) => {
   console.log( `delta=[${delta}]` );
   await doLoop();
-}, 1000 / 5 );
+}, 1000 / 10 );
 
 // myStreamDeck.on( 'down', keyIndex => {
 //   doLoop( 0 );
